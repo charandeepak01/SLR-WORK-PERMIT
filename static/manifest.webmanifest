@@ -1,0 +1,23 @@
+{
+  "name": "SLR Digital Safe Work Permit",
+  "short_name": "SLR Permit",
+  "description": "Digital safe work permit workflow for SLR operations, approvals, and controlled issuance.",
+  "start_url": "/",
+  "scope": "/",
+  "id": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#073f38",
+  "theme_color": "#073f38",
+  "orientation": "portrait",
+  "categories": ["productivity", "utilities"],
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/assets/slr-app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

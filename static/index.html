@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#073f38" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SLR Permit" />
+    <meta name="application-name" content="SLR Digital Safe Work Permit" />
+    <link rel="icon" href="/assets/slr-app-icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/assets/slr-app-icon.svg" />
+    <title>SLR Digital Safe Work Permit</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="update-toast" class="toast update-toast hidden" role="status" aria-live="assertive">
+      <span>A new version is available.</span>
+      <button id="update-now-button" class="button primary small" type="button">Refresh</button>
+    </div>
+    <div id="global-alert" class="global-alert hidden" role="alert" aria-live="assertive">
+      <div class="global-alert-body">
+        <div>
+          <strong>Department permit alert</strong>
+          <p id="global-alert-text">A new permit request has been submitted.</p>
+        </div>
+        <button id="acknowledge-alert" class="button primary small" type="button">Stop alarm</button>
+      </div>
+    </div>
+
+    <main id="auth-view" class="auth-shell">
+      <section class="brand-panel">
+        <img class="brand-logo" src="/assets/slr-app-icon.svg" alt="SLR Metaliks — Powered by Passion" />
+        <p class="eyebrow">SLR Metaliks Limited</p>
+        <h1>Safe work, clearly controlled.</h1>
+        <p class="brand-copy">A digital permit-to-work system for the steel plant. Access, issuance, completion, and closure remain under administrator control.</p>
+        <div class="plant-tags" aria-label="Plant divisions">
+          <span>MBF 1</span><span>MBF 2</span><span>Sinter 1</span><span>Sinter 2</span><span>SMS</span><span>CCM</span><span>Rolling Mill</span>
+        </div>
+      </section>
+      <section class="auth-card card">
+        <div class="auth-tabs" role="tablist">
+          <button class="tab active" type="button" data-auth-tab="login">Sign in</button>
+          <button class="tab" type="button" data-auth-tab="register">Request access</button>
+        </div>
+        <div id="insecure-warning" class="auth-form hidden" style="padding-top: 15px; border-top: 1px solid var(--line); margin-top: 15px; background: #fffbe6; padding: 15px; border-radius: 8px; border: 1px solid #ffe58f;">
+          <h3 style="margin:0 0 8px; font-size: 1rem; color: #664d03;">App Installation Disabled</h3>
+          <p style="margin:0; font-size: .85rem; line-height: 1.5; color: #664d03;">The "Install App" button is only available when the app is loaded over a secure (https://) connection. To enable this feature, the app must be deployed to a public server.</p>
+        </div>
+        <div id="install-container" class="auth-form hidden" style="padding-top: 15px; border-top: 1px solid var(--line); margin-top: 15px;">
+          <button id="install-button" class="button primary wide" type="button">Install App on this Device</button>
+          <p class="helper">Get quick access to the permit system from your home screen.</p>
+        </div>
+        <form id="login-form" class="auth-form" novalidate>
+          <h2>Sign in</h2>
+          <p>Use your approved employee account.</p>
+          <label>Employee ID<input name="employeeId" autocomplete="username" required placeholder="Example: SLR-1042" /></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required placeholder="Your password" /></label>
+          <button class="button primary wide" type="submit">Sign in securely</button>
+          <p class="helper">New users must request access and wait for the administrator’s approval.</p>
+        </form>
+        <form id="register-form" class="auth-form hidden" novalidate>
+          <h2>Request access</h2>
+          <p>Your details will be sent to the administrator. You cannot sign in until approval is given.</p>
+          <label>Full name<input name="fullName" autocomplete="name" required maxlength="100" placeholder="Your full name" /></label>
+          <label>Employee ID<input name="employeeId" required maxlength="40" placeholder="Example: SLR-1042" /></label>
+          <label>Division<select name="division" id="register-division" required></select></label>
+          <label>Department<select name="department" id="register-department" required></select></label>
+          <label>Mobile number<input name="mobileNumber" type="tel" required maxlength="20" placeholder="Enter mobile number" /></label>
+          <label>Create password<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters" /></label>
+          <button class="button primary wide" type="submit">Send access request</button>
+        </form>
+      </section>
+    </main>
+
+    <div id="app-view" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="side-brand"><img class="side-logo" src="/assets/slr-app-icon.svg" alt="SLR Metaliks" /><span>Permit Control</span></div>
+        <nav id="navigation" aria-label="Main navigation">
+          <button class="nav-link active" data-page="dashboard" type="button"><span>▦</span> Dashboard</button>
+          <button class="nav-link" data-page="new-permit" type="button"><span>＋</span> New permit</button>
+          <button class="nav-link" data-page="permits" type="button"><span>▤</span> Permits</button>
+          <button id="admin-nav" class="nav-link hidden" data-page="approvals" type="button"><span>✓</span> Approval centre <b id="pending-badge" class="badge">0</b></button>
+        </nav>
+        <div class="side-bottom">
+          <div id="side-user" class="side-user"></div>
+          <button id="change-password-button" class="nav-link" type="button">⚿ Change password</button>
+          <button id="logout-button" class="nav-link logout" type="button">↪ Sign out</button>
+        </div>
+      </aside>
+
+      <section class="mobile-bar">
+        <img class="mobile-logo" src="/assets/slr-app-icon.svg" alt="SLR" /><strong>Permit Control</strong>
+        <button id="mobile-menu" type="button" aria-label="Open menu">☰</button>
+      </section>
+
+      <main class="workspace">
+        <header class="page-header">
+          <div><p id="page-kicker" class="eyebrow">CONTROLLED WORKFLOW</p><h1 id="page-title">Dashboard</h1></div>
+          <div id="header-user" class="header-user">
+            <button id="notifications-button" class="icon-button" type="button" aria-label="Enable notifications">🔔</button>
+          </div>
+        </header>
+        <div id="page-content"></div>
+      </main>
+    </div>
+
+    <dialog id="permit-dialog" class="permit-dialog">
+      <div class="dialog-top"><button id="close-dialog" class="icon-button" type="button" aria-label="Close permit details">×</button></div>
+      <div id="dialog-content"></div>
+    </dialog>
+
+    <template id="empty-state-template">
+      <section class="empty-state card"><div class="empty-icon">⌁</div><h3>Nothing here yet</h3><p>Create a digital safe work permit to begin the controlled approval process.</p></section>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
