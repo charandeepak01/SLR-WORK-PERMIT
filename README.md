@@ -96,6 +96,24 @@ To ensure the server runs continuously, even after a reboot, you should run it a
 
     You can now manage the service from the Windows Services app (`services.msc`) or using nssm commands (`stop`, `restart`, `status`). The server will now start automatically when the computer boots.
 
+## Deploying to Vercel
+
+This application can be deployed to Vercel for demonstration purposes. However, due to Vercel's ephemeral filesystem, the SQLite database will be temporary and all data (users, permits, etc.) will be lost when the serverless function goes to sleep or is redeployed.
+
+1.  **Push your code** to a GitHub repository and connect it to a new Vercel project.
+2.  **Add Environment Variables:** In your Vercel project settings, go to **Settings > Environment Variables** and add the following:
+    - `INITIAL_ADMIN_PASSWORD`: Set this to the secure password you want for the `ADMIN-001` account. **This is required for you to be able to log in.**
+    - `VAPID_PRIVATE_KEY` (optional): Your VAPID private key for push notifications.
+    - `VAPID_PUBLIC_KEY` (optional): Your VAPID public key for push notifications.
+3.  **Deploy:** Trigger a new deployment from the Vercel dashboard.
+
+After deployment, you can log in with:
+
+- Employee ID: `ADMIN-001`
+- Password: The value you set for `INITIAL_ADMIN_PASSWORD`.
+
+For a production deployment on Vercel, you must migrate from SQLite to a managed database service like Vercel Postgres.
+
 ## Data location and backup
 
 All app data is stored in `data/work_permit.db`. Back up this file while the server is stopped. Do not put it in public cloud sharing folders or send it through unencrypted email.
