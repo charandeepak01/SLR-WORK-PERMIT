@@ -23,7 +23,16 @@ from pywebpush import webpush, WebPushException
 
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
+
+# --- Vercel Deployment Note ---
+# Vercel has a read-only filesystem, except for the /tmp directory.
+# We are placing the database there for the deployment to run.
+# WARNING: The /tmp directory is ephemeral and will be cleared between
+# serverless function invocations. This means your data WILL NOT PERSIST.
+# This is for demonstration/testing only. For production, use a managed
+# database service like Vercel Postgres.
+IS_VERCEL = os.environ.get("VERCEL") == "1"
+DATA_DIR = Path("/tmp/data") if IS_VERCEL else ROOT / "data"
 DB_PATH = DATA_DIR / "work_permit.db"
 STATIC_DIR = ROOT / "static"
 
