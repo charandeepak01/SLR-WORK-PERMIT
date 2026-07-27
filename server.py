@@ -325,8 +325,8 @@ def register(data: dict[str, Any], error_class: type[Exception]) -> None:
         raise error_class("Choose a valid division.")
     if department not in DEPARTMENTS:
         raise error_class("Choose a valid department.")
-    if not re.fullmatch(r"[+()\-\d\s]{8,20}", mobile_number):
-        raise error_class("Enter a valid mobile number.")
+    if not re.fullmatch(r"\d{10}", mobile_number):
+        raise error_class("Enter a valid 10-digit mobile number.")
     if len(password) < 12 or len(password) > 200:
         raise error_class("Password must be at least 12 characters.")
     salt, digest = password_hash(password)
@@ -439,7 +439,7 @@ def reject_user(admin: sqlite3.Row, user_id: int, error_class: type[Exception]) 
 
 def create_permit(user: sqlite3.Row, data: dict[str, Any], error_class: type[Exception]) -> tuple[int, str]:
     description = str(data.get("workDescription", "")).strip()
-    division = str(user.get("division")).strip()
+    division = str(user["division"]).strip()
     department = str(data.get("department", "")).strip()
     area = str(data.get("area", "")).strip()
     equipment = str(data.get("equipment", "")).strip()
@@ -454,8 +454,8 @@ def create_permit(user: sqlite3.Row, data: dict[str, Any], error_class: type[Exc
         raise error_class("Work description must be 5–2000 characters.")
     if division not in DIVISIONS or department not in DEPARTMENTS or not area:
         raise error_class("Complete division, department, and area/location.")
-    if not re.fullmatch(r"[+()\-\d\s]{8,20}", contact_number):
-        raise error_class("Enter a valid mobile number for contact.")
+    if not re.fullmatch(r"\d{10}", contact_number):
+        raise error_class("Enter a valid 10-digit mobile number for contact.")
     if len(area) > 200 or len(equipment) > 200:
         raise error_class("Area and equipment entries are too long.")
     if not isinstance(job_types, list) or not all(isinstance(x, str) for x in job_types):
@@ -574,11 +574,20 @@ def complete_permit(user: sqlite3.Row, permit_id: int, data: dict[str, Any], err
     normalisation = data.get("normalisation", {})
     if not isinstance(normalisation, dict):
         raise error_class("Invalid normalisation checklist.")
+
+    admins = []
     with db() as conn:
         conn.execute("UPDATE permits SET status = 'job_completed', normalisation = ?, completed_by = ?, completed_at = ? WHERE id = ?", (json.dumps(normalisation), user["id"], now(), permit_id))
         conn.execute(
             "INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, created_at) VALUES (?, ?, ?, ?, ?)",
             (user["id"], "Job completion submitted", "permit", permit_id, now()),
+        )
+        admins = conn.execute("SELECT id FROM users WHERE role = 'admin'").fetchall()
+
+    for admin in admins:
+        send_push_to_user(
+            admin["id"], "Permit Ready for Closure",
+            f"Job for {row['permit_no']} was completed by {user['full_name']}. Please review and close.", f"permit-{permit_id}"
         )
 
 

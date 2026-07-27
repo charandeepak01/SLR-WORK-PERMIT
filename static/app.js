@@ -5,6 +5,11 @@ const state = {
   page: "dashboard",
 };
 
+const ICONS = {
+  eye: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`,
+  eyeOff: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`
+};
+
 const labels = {
   authorityChecked: "Issuing authority checked all precautions",
   topFiringDone: "Top firing done",
@@ -53,15 +58,6 @@ const labels = {
   servicesRestored: "All services restored",
 };
 
-const jobTypeLabels = {
-  hot_work: "Hot work",
-  confined_space: "Confined space work",
-  work_at_height: "Working at height",
-  excavation: "Excavation",
-};
-
-const safetyAlertJobTypes = new Set(["hot_work", "confined_space", "work_at_height", "excavation"]);
-
 const $ = (selector, within = document) => within.querySelector(selector);
 const $$ = (selector, within = document) => [...within.querySelectorAll(selector)];
 
@@ -88,6 +84,22 @@ function toast(message, isError = false) {
   element.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => element.classList.remove("show"), 4200);
+}
+
+function togglePasswordVisibility(event) {
+  const button = event.currentTarget;
+  const wrapper = button.closest('.password-wrapper');
+  if (!wrapper) return;
+  const input = $('input', wrapper);
+  if (input.type === 'password') {
+    input.type = 'text';
+    button.innerHTML = ICONS.eyeOff;
+    button.setAttribute('aria-label', 'Hide password');
+  } else {
+    input.type = 'password';
+    button.innerHTML = ICONS.eye;
+    button.setAttribute('aria-label', 'Show password');
+  }
 }
 
 const alertChannelName = "slr-permit-notifications";
@@ -140,16 +152,6 @@ function hideGlobalAlert() {
 function acknowledgeGlobalAlert() {
   stopAlertSound();
   hideGlobalAlert();
-}
-
-function triggerDepartmentAlert(permitNo, department, division, jobTypes = []) {
-  if (!jobTypes.some(type => safetyAlertJobTypes.has(type))) return;
-  const message = `${permitNo} was submitted in the ${division} division by the ${department} department. Safety and Fire Department must review and issue the permit.`;
-  showGlobalAlert(message);
-  startAlertSound();
-  const payload = { type: "permit-alert", message, permitNo, department, division, at: Date.now() };
-  localStorage.setItem(alertChannelName, JSON.stringify(payload));
-  alertChannel?.postMessage(payload);
 }
 
 function handleGlobalAlert(payload) {
@@ -254,9 +256,8 @@ async function renderNewPermit() {
         <h3>1. Work details</h3><p>These are the main details from the top of the paper permit.</p>
         <div class="form-grid three">
           <label class="full">Details of work to be carried out<textarea name="workDescription" required maxlength="2000" placeholder="Describe the work, method, and equipment involved."></textarea></label>
-          <label>Department<select name="department" required>${optionHtml(state.config.departments, state.user.department, "Select department")}</select></label>
-          <label class="full">For any further information, call ${escapeHtml(state.user.fullName)} at the mobile number below.</label>
-          <label>Mobile number<input name="contactNumber" type="tel" required maxlength="20" placeholder="Enter employee mobile number" /></label>
+          <label>Department<select name="department" required>${optionHtml(state.config.departments, state.user.department, "Select department")}</select></label>          
+          <label>Mobile number for contact<input name="contactNumber" type="tel" required pattern="\\d{10}" maxlength="10" placeholder="Enter 10-digit mobile number" title="Enter a 10-digit mobile number." value="${escapeHtml(state.user.mobileNumber || '')}" /></label>
           <label>Area / location<input name="area" required maxlength="200" placeholder="Example: MBF 1 - Cast house" /></label>
           <label>Equipment / asset<input name="equipment" maxlength="200" placeholder="Example: Main blower" /></label>
           <label>Valid from<input name="validFrom" type="datetime-local" required /></label>
@@ -277,7 +278,6 @@ async function renderNewPermit() {
       </section>
       <section class="form-section">
         <h3>3. General safety precautions</h3><p>Select the permit activity, then record the specific checks completed.</p>
-        <div class="check-grid four">${Object.entries(jobTypeLabels).map(([key, text]) => `<label class="check-item"><input type="checkbox" name="jobTypes" value="${key}" /><span>${text}</span></label>`).join("")}</div>
         <div class="check-grid" style="margin-top:14px">${["tagsBoards", "cordoned", "ppe"].map(key => checkbox(key)).join("")}</div>
         <div class="check-grid" style="margin-top:14px">
           ${checklistGroup("Hot work", "Fire and combustible-material controls", ["hotEquipment", "hotAreaClear", "hotMasking", "hotOpenings", "hotExtinguisher", "hotPurging"])}
@@ -318,6 +318,9 @@ async function submitPermit(event) {
   const electricalKeys = ["electricalDrivePanel", "electricalFuseRemoved", "electricalIsolatorLocked", "electricalTagOut"];
   const department = formData.get("department") || "";
   const contactNumber = String(formData.get("contactNumber") || "").trim();
+  if (!/^\d{10}$/.test(contactNumber)) {
+    return toast("Please enter a valid 10-digit contact number.", true);
+  }
   const payload = {
     workDescription: formData.get("workDescription"), department, area: formData.get("area"), equipment: formData.get("equipment"), contactNumber,
     validFrom: validFrom.toISOString(), validUntil: validUntil.toISOString(), jobTypes: formData.getAll("jobTypes"),
@@ -330,7 +333,6 @@ async function submitPermit(event) {
   try {
     const result = await api("/api/permits", { method: "POST", body: JSON.stringify(payload) });
     toast(`${result.permitNo} sent for approval.`);
-    triggerDepartmentAlert(result.permitNo, department, state.user.division, payload.jobTypes);
     go("permits");
   } catch (error) { toast(error.message, true); }
   finally { submit.disabled = false; }
@@ -353,10 +355,10 @@ async function openPermit(permitId) {
   try {
     const data = await api(`/api/permits/${permitId}`);
     const p = data.permit;
-    const jobTypes = (p.jobTypes || []).map(type => jobTypeLabels[type] || titleCase(type));
+    const jobTypes = (p.jobTypes || []).map(type => titleCase(type));
     const dialogContent = `
       <article class="permit-detail"><header class="detail-head"><p class="eyebrow">DIGITAL SAFE WORK PERMIT</p><h2>${escapeHtml(p.permitNo)} ${statusBadge(p.status)}</h2><p class="detail-meta">Submitted by ${escapeHtml(p.requesterName)} on ${formatDate(p.requestedAt)}</p></header>
-      <section class="detail-grid">${detailItem("Division", p.division)}${detailItem("Department", p.department)}${detailItem("Area / location", p.area)}${detailItem("Equipment", p.equipment)}${detailItem("Mobile number", p.contactNumber || "—")} ${detailItem("For any further information", `Call ${p.requesterName} at ${p.contactNumber || "—"}`)}</section>
+      <section class="detail-grid">${detailItem("Division", p.division)}${detailItem("Department", p.department)}${detailItem("Area / location", p.area)}${detailItem("Equipment", p.equipment)} ${detailItem("For any further information", `Call ${p.requesterName} at ${p.contactNumber || "—"}`)}</section>
       <section class="detail-section"><h3>Work to be carried out</h3><p>${escapeHtml(p.workDescription).replaceAll("\n", "<br>")}</p></section>
       <section class="detail-section"><h3>Work activity</h3>${jobTypes.length ? `<div class="checked-list">${jobTypes.map(type => `<span>${escapeHtml(type)}</span>`).join("")}</div>` : `<p class="small-text">General work permit</p>`}</section>
       <section class="detail-section"><h3>Isolation controls</h3>${checkedSummary(p.isolations)}${p.isolations?.coPpm !== undefined ? `<p class="small-text">Recorded CO reading: ${escapeHtml(p.isolations.coPpm)} ppm</p>` : ""}</section>
@@ -548,10 +550,21 @@ async function requestAccess(event) {
   event.preventDefault();
   const form = event.currentTarget;
   if (!form.reportValidity()) return;
+
+  const formData = new FormData(form);
+  if (formData.get("password") !== formData.get("confirmPassword")) {
+    return toast("The passwords do not match. Please re-enter them.", true);
+  }
+
+  const mobileNumber = String(formData.get("mobileNumber") || "").trim();
+  if (!/^\d{10}$/.test(mobileNumber)) {
+    return toast("Please enter a valid 10-digit mobile number.", true);
+  }
+
   const submit = $("button[type=submit]", form);
   submit.disabled = true;
   try {
-    const data = await api("/api/auth/register", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+    const data = await api("/api/auth/register", { method: "POST", body: JSON.stringify(Object.fromEntries(formData)) });
     toast(data.message);
     form.reset();
     switchAuth("login");
@@ -572,10 +585,22 @@ async function signOut() {
 }
 
 function showPasswordDialog() {
-  $("#dialog-content").innerHTML = `<article class="permit-detail"><header class="detail-head"><p class="eyebrow">ACCOUNT SECURITY</p><h2>Change password</h2><p class="detail-meta">Use a unique password with at least 12 characters. This is especially important for the first administrator account.</p></header><form id="change-password-form" class="completion-form"><label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required /></label><label>New password<input name="newPassword" type="password" autocomplete="new-password" minlength="12" required /></label><label>Confirm new password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></label><div class="dialog-actions"><button class="button primary" type="submit">Update password</button></div></form></article>`;
+  $("#dialog-content").innerHTML = `<article class="permit-detail">
+    <header class="detail-head"><p class="eyebrow">ACCOUNT SECURITY</p><h2>Change password</h2><p class="detail-meta">Use a unique password with at least 12 characters. This is especially important for the first administrator account.</p></header>
+    <form id="change-password-form" class="completion-form">
+      <label>Current password<span class="password-wrapper"><input name="currentPassword" type="password" autocomplete="current-password" required /><button type="button" class="eye-button" aria-label="Show password"></button></span></label>
+      <label>New password<span class="password-wrapper"><input name="newPassword" type="password" autocomplete="new-password" minlength="12" required /><button type="button" class="eye-button" aria-label="Show password"></button></span></label>
+      <label>Confirm new password<span class="password-wrapper"><input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /><button type="button" class="eye-button" aria-label="Show password"></button></span></label>
+      <div class="dialog-actions"><button class="button primary" type="submit">Update password</button></div>
+    </form>
+  </article>`;
   const dialog = $("#permit-dialog");
   dialog.showModal();
   $("#change-password-form").addEventListener("submit", changePassword);
+  $$('.eye-button', dialog).forEach(btn => {
+    btn.innerHTML = ICONS.eye;
+    btn.addEventListener('click', togglePasswordVisibility);
+  });
 }
 
 async function changePassword(event) {
@@ -719,11 +744,65 @@ function listenForServiceWorkerUpdates() {
 async function bootstrap() {
   try {
     state.config = await api("/api/config");
+
+    const style = document.createElement('style');
+    style.textContent = `
+      .password-wrapper { position: relative; display: flex; align-items: center; }
+      .password-wrapper input { padding-right: 40px !important; width: 100%; box-sizing: border-box; }
+      .eye-button { position: absolute; right: 0; top: 0; bottom: 0; width: 40px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0.6; color: inherit; }
+      .eye-button:hover { opacity: 1; }
+      .eye-button svg { pointer-events: none; }
+      .watermark {
+        /* This is positioned at the bottom of the sidebar */
+        margin-top: auto;
+        padding: 20px 10px;
+        text-align: center;
+        font-size: 11px;
+        font-family: sans-serif;
+        font-weight: 500;
+        color: #aaa;
+        pointer-events: none;
+      }
+    `;
+    document.head.appendChild(style);
+
+    const watermark = document.createElement('div');
+    watermark.className = 'watermark';
+    watermark.textContent = 'created by charan deepak c';
+    $(".sidebar")?.appendChild(watermark);
+
     registerServiceWorker();
     listenForServiceWorkerUpdates();
     initGlobalAlerts();
     $("#register-division").innerHTML = optionHtml(state.config.divisions, "", "Select division");
     $("#register-department").innerHTML = optionHtml(state.config.departments, "", "Select department");
+
+    const registerPasswordInput = $('#register-form input[name="password"]');
+    if (registerPasswordInput) {
+      const passwordLabel = registerPasswordInput.closest('label');
+      if (passwordLabel) {
+        const confirmLabel = document.createElement('label');
+        confirmLabel.innerHTML = 'Confirm password<input type="password" name="confirmPassword" autocomplete="new-password" minlength="12" required />';
+        passwordLabel.parentNode.insertBefore(confirmLabel, passwordLabel.nextSibling);
+      }
+    }
+
+    $$('#login-form input[type="password"], #register-form input[type="password"]').forEach(input => {
+      if (input.closest('.password-wrapper')) return;
+      const wrapper = document.createElement('span');
+      wrapper.className = 'password-wrapper';
+      const parent = input.parentElement;
+      parent.insertBefore(wrapper, input);
+      wrapper.appendChild(input);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'eye-button';
+      button.setAttribute('aria-label', 'Show password');
+      button.innerHTML = ICONS.eye;
+      button.addEventListener('click', togglePasswordVisibility);
+      wrapper.appendChild(button);
+    });
+
     $$("[data-auth-tab]").forEach(button => button.addEventListener("click", () => switchAuth(button.dataset.authTab)));
     $("#login-form").addEventListener("submit", signIn);
     $("#register-form").addEventListener("submit", requestAccess);
