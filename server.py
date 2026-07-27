@@ -210,7 +210,7 @@ def init_db() -> None:
         conn.execute(
             """INSERT INTO users (full_name, employee_id, division, department, role, password_salt, password_hash,
                approval_status, created_at, approved_at) VALUES (?, ?, ?, ?, 'admin', ?, ?, 'approved', ?, ?)""",
-            ("System Administrator", "ADMIN-001", "MBF 1", "Safety", salt, digest, now(), now()),
+            ("admin charan deepak c", "ADMIN-001", "MBF 1", "Safety", salt, digest, now(), now()),
         )
         conn.execute("INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)", (1, "Initial administrator created", "user", 1, '{"employee_id": "ADMIN-001"}', now()))
     conn.commit()
@@ -439,8 +439,8 @@ def reject_user(admin: sqlite3.Row, user_id: int, error_class: type[Exception]) 
 
 def create_permit(user: sqlite3.Row, data: dict[str, Any], error_class: type[Exception]) -> tuple[int, str]:
     description = str(data.get("workDescription", "")).strip()
-    division = str(data.get("division", "")).strip()
-    department = str(user.get("department") or data.get("department", "")).strip()
+    division = str(user.get("division")).strip()
+    department = str(data.get("department", "")).strip()
     area = str(data.get("area", "")).strip()
     equipment = str(data.get("equipment", "")).strip()
     contact_number = str(data.get("contactNumber", "")).strip()
@@ -592,6 +592,29 @@ def close_permit(admin: sqlite3.Row, permit_id: int, error_class: type[Exception
         )
     return row["permit_no"]
 
+
+def delete_permit(admin: sqlite3.Row, permit_id: int, error_class: type[Exception]) -> None:
+    with db() as conn:
+        row = conn.execute("SELECT permit_no FROM permits WHERE id = ?", (permit_id,)).fetchone()
+        if not row:
+            raise error_class("Permit not found.", 404)
+
+        # Use a transaction to ensure atomicity
+        conn.execute("BEGIN")
+        try:
+            # Delete associated audit logs first
+            conn.execute("DELETE FROM audit_logs WHERE entity_type = 'permit' AND entity_id = ?", (permit_id,))
+            # Then delete the permit itself
+            conn.execute("DELETE FROM permits WHERE id = ?", (permit_id,))
+            # Finally, log the deletion action as a system event
+            conn.execute(
+                "INSERT INTO audit_logs (actor_id, action, entity_type, detail, created_at) VALUES (?, ?, ?, ?, ?)",
+                (admin["id"], "Permit deleted", "system", json.dumps({"permit_no": row["permit_no"], "deleted_permit_id": permit_id}), now()),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
 def save_push_subscription(user_id: int, sub_data: dict, error_class: type[Exception]):
     endpoint = sub_data.get("endpoint")

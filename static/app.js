@@ -254,8 +254,7 @@ async function renderNewPermit() {
         <h3>1. Work details</h3><p>These are the main details from the top of the paper permit.</p>
         <div class="form-grid three">
           <label class="full">Details of work to be carried out<textarea name="workDescription" required maxlength="2000" placeholder="Describe the work, method, and equipment involved."></textarea></label>
-          <label>Division<select name="division" required>${optionHtml(state.config.divisions, "", "Select division")}</select></label>
-          <label>Department<input name="department" value="${escapeHtml(state.user.department)}" readonly required /></label>
+          <label>Department<select name="department" required>${optionHtml(state.config.departments, state.user.department, "Select department")}</select></label>
           <label class="full">For any further information, call ${escapeHtml(state.user.fullName)} at the mobile number below.</label>
           <label>Mobile number<input name="contactNumber" type="tel" required maxlength="20" placeholder="Enter employee mobile number" /></label>
           <label>Area / location<input name="area" required maxlength="200" placeholder="Example: MBF 1 - Cast house" /></label>
@@ -317,10 +316,10 @@ async function submitPermit(event) {
     "utilityServices", "utilityValvesTagged", "utilityDepressurised",
   ];
   const electricalKeys = ["electricalDrivePanel", "electricalFuseRemoved", "electricalIsolatorLocked", "electricalTagOut"];
-  const department = state.user?.department || formData.get("department") || "";
+  const department = formData.get("department") || "";
   const contactNumber = String(formData.get("contactNumber") || "").trim();
   const payload = {
-    workDescription: formData.get("workDescription"), division: formData.get("division"), department, area: formData.get("area"), equipment: formData.get("equipment"), contactNumber,
+    workDescription: formData.get("workDescription"), department, area: formData.get("area"), equipment: formData.get("equipment"), contactNumber,
     validFrom: validFrom.toISOString(), validUntil: validUntil.toISOString(), jobTypes: formData.getAll("jobTypes"),
     isolations: Object.fromEntries(Object.entries(checks).filter(([key]) => isolationKeys.includes(key))),
     precautions: Object.fromEntries(Object.entries(checks).filter(([key]) => !isolationKeys.includes(key) && !electricalKeys.includes(key))),
@@ -331,7 +330,7 @@ async function submitPermit(event) {
   try {
     const result = await api("/api/permits", { method: "POST", body: JSON.stringify(payload) });
     toast(`${result.permitNo} sent for approval.`);
-    triggerDepartmentAlert(result.permitNo, department, payload.division, payload.jobTypes);
+    triggerDepartmentAlert(result.permitNo, department, state.user.division, payload.jobTypes);
     go("permits");
   } catch (error) { toast(error.message, true); }
   finally { submit.disabled = false; }
@@ -371,6 +370,7 @@ async function openPermit(permitId) {
         ${isAdmin() && p.status === "pending_approval" ? `<button class="button primary" type="button" id="review-permit">Review permit</button>` : ""}
         ${isAdmin() && p.status === "job_completed" ? `<button class="button primary" type="button" id="close-permit">Close permit</button>` : ""}
         ${!isAdmin() && p.status === "issued" && p.requesterId === state.user.id ? `<button class="button primary" type="button" id="finish-job">Record job completion</button>` : ""}
+        ${isAdmin() ? `<button class="button danger" type="button" id="delete-permit">Delete</button>` : ""}
       </div>
       <div id="permit-action-panel"></div>
       </article>`;
@@ -381,6 +381,7 @@ async function openPermit(permitId) {
     $("#review-permit")?.addEventListener("click", () => showReviewPanel(p.id));
     $("#close-permit")?.addEventListener("click", () => closePermit(p.id));
     $("#finish-job")?.addEventListener("click", () => showCompletionPanel(p.id));
+    $("#delete-permit")?.addEventListener("click", () => deletePermit(p.id));
   } catch (error) { toast(error.message, true); }
 }
 
@@ -422,6 +423,16 @@ async function closePermit(permitId) {
   if (!window.confirm("Close this permit after reviewing the normalisation details?")) return;
   try {
     const result = await api(`/api/permits/${permitId}/close`, { method: "POST", body: JSON.stringify({}) });
+    toast(result.message);
+    $("#permit-dialog").close();
+    await refreshCurrentPage();
+  } catch (error) { toast(error.message, true); }
+}
+
+async function deletePermit(permitId) {
+  if (!window.confirm("Are you sure you want to permanently delete this permit? This action cannot be undone.")) return;
+  try {
+    const result = await api(`/api/permits/${permitId}`, { method: "DELETE" });
     toast(result.message);
     $("#permit-dialog").close();
     await refreshCurrentPage();
@@ -489,7 +500,7 @@ async function go(page) {
 async function refreshCurrentPage() { await go(state.page); }
 
 function setUserUi() {
-  $("#side-user").innerHTML = `<strong>${escapeHtml(state.user.fullName)}</strong>${escapeHtml(titleCase(state.user.role))} · ${escapeHtml(state.user.department)}`;
+  $("#side-user").innerHTML = `<strong>${escapeHtml(state.user.fullName)}</strong>`;
   $("#header-user").insertAdjacentHTML("beforeend", `<span class="avatar">${escapeHtml(initials(state.user.fullName))}</span><span>${escapeHtml(state.user.fullName)}</span>`);
   $("#admin-nav").classList.toggle("hidden", !isAdmin());
 }

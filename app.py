@@ -207,6 +207,13 @@ def close_permit(admin, permit_id: int):
     return jsonify({"message": "Permit closed."})
 
 
+@app.route("/api/permits/<int:permit_id>", methods=["DELETE"])
+@admin_required
+def delete_permit(admin, permit_id: int):
+    logic.delete_permit(admin, permit_id, AppError)
+    return jsonify({"message": "Permit permanently deleted."})
+
+
 @app.route("/api/notifications/subscribe", methods=["POST"])
 def subscribe_notifications():
     user = get_current_user()
