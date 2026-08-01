@@ -9,9 +9,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SLR Permit" />
     <meta name="application-name" content="SLR Digital Safe Work Permit" />
-    <link rel="icon" href="/assets/slr-app-icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/assets/slr-metaliks-logo.png" type="image/png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="/assets/slr-app-icon.svg" />
+    <link rel="apple-touch-icon" href="/assets/slr-metaliks-logo.png" />
     <title>SLR Digital Safe Work Permit</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -33,24 +33,21 @@
 
     <main id="auth-view" class="auth-shell">
       <section class="brand-panel">
-        <img class="brand-logo" src="/assets/slr-app-icon.svg" alt="SLR Metaliks — Powered by Passion" />
+        <img class="brand-logo" src="/assets/slr-metaliks-logo.png" alt="SLR Work Permit Logo" />
         <p class="eyebrow">SLR Metaliks Limited</p>
         <h1>Safe work, clearly controlled.</h1>
         <p class="brand-copy">A digital permit-to-work system for the steel plant. Access, issuance, completion, and closure remain under administrator control.</p>
-        <div class="plant-tags" aria-label="Plant divisions">
-          <span>MBF 1</span><span>MBF 2</span><span>Sinter 1</span><span>Sinter 2</span><span>SMS</span><span>CCM</span><span>Rolling Mill</span>
-        </div>
       </section>
       <section class="auth-card card">
         <div class="auth-tabs" role="tablist">
           <button class="tab active" type="button" data-auth-tab="login">Sign in</button>
           <button class="tab" type="button" data-auth-tab="register">Request access</button>
         </div>
-        <div id="insecure-warning" class="auth-form hidden" style="padding-top: 15px; border-top: 1px solid var(--line); margin-top: 15px; background: #fffbe6; padding: 15px; border-radius: 8px; border: 1px solid #ffe58f;">
+        <div id="insecure-warning" class="auth-form hidden">
           <h3 style="margin:0 0 8px; font-size: 1rem; color: #664d03;">App Installation Disabled</h3>
           <p style="margin:0; font-size: .85rem; line-height: 1.5; color: #664d03;">The "Install App" button is only available when the app is loaded over a secure (https://) connection. To enable this feature, the app must be deployed to a public server.</p>
         </div>
-        <div id="install-container" class="auth-form hidden" style="padding-top: 15px; border-top: 1px solid var(--line); margin-top: 15px;">
+        <div id="install-container" class="auth-form hidden">
           <button id="install-button" class="button primary wide" type="button">Install App on this Device</button>
           <p class="helper">Get quick access to the permit system from your home screen.</p>
         </div>
@@ -58,7 +55,7 @@
           <h2>Sign in</h2>
           <p>Use your approved employee account.</p>
           <label>Employee ID<input name="employeeId" autocomplete="username" required placeholder="Example: SLR-1042" /></label>
-          <label>Password<input name="password" type="password" autocomplete="current-password" required placeholder="Your password" /></label>
+          <label>Password<span class="password-wrapper"><input name="password" type="password" autocomplete="current-password" required placeholder="Your password" /><button type="button" class="eye-button" aria-label="Show password"></button></span></label>
           <button class="button primary wide" type="submit">Sign in securely</button>
           <p class="helper">New users must request access and wait for the administrator’s approval.</p>
         </form>
@@ -69,8 +66,10 @@
           <label>Employee ID<input name="employeeId" required maxlength="40" placeholder="Example: SLR-1042" /></label>
           <label>Division<select name="division" id="register-division" required></select></label>
           <label>Department<select name="department" id="register-department" required></select></label>
-          <label>Mobile number<input name="mobileNumber" type="tel" required maxlength="20" placeholder="Enter mobile number" /></label>
-          <label>Create password<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters" /></label>
+          <label>Designation / Leadership Role<select name="designation" id="register-designation" required></select></label>
+          <label>Mobile number<input name="mobileNumber" type="tel" required pattern="\d{10}" maxlength="10" placeholder="Enter 10-digit mobile number" title="Enter a 10-digit mobile number." /></label>
+          <label>Create password<span class="password-wrapper"><input name="password" type="password" autocomplete="new-password" minlength="12" required placeholder="At least 12 characters" /><button type="button" class="eye-button" aria-label="Show password"></button></span></label>
+          <label>Confirm password<span class="password-wrapper"><input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required placeholder="Re-enter your password" /><button type="button" class="eye-button" aria-label="Show password"></button></span></label>
           <button class="button primary wide" type="submit">Send access request</button>
         </form>
       </section>
@@ -78,7 +77,11 @@
 
     <div id="app-view" class="app-shell hidden">
       <aside class="sidebar">
-        <div class="side-brand"><img class="side-logo" src="/assets/slr-app-icon.svg" alt="SLR Metaliks" /><span>Permit Control</span></div>
+        <div class="side-brand">
+          <div class="logo-container">
+            <img src="/assets/slr-metaliks-logo.png" alt="SLR Work Permit Logo" class="brand-logo-img">
+          </div>
+        </div>
         <nav id="navigation" aria-label="Main navigation">
           <button class="nav-link active" data-page="dashboard" type="button"><span>▦</span> Dashboard</button>
           <button class="nav-link" data-page="new-permit" type="button"><span>＋</span> New permit</button>
@@ -93,7 +96,9 @@
       </aside>
 
       <section class="mobile-bar">
-        <img class="mobile-logo" src="/assets/slr-app-icon.svg" alt="SLR" /><strong>Permit Control</strong>
+        <div class="logo-container">
+          <img src="/assets/slr-metaliks-logo.png" alt="SLR Work Permit Logo" class="brand-logo-img">
+        </div>
         <button id="mobile-menu" type="button" aria-label="Open menu">☰</button>
       </section>
 

@@ -14,9 +14,9 @@
   "lang": "en",
   "icons": [
     {
-      "src": "/assets/slr-app-icon.svg",
+      "src": "/assets/slr-metaliks-logo.png",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

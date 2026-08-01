@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 from functools import wraps
 from http import HTTPStatus
+import click
+from flask.cli import with_appcontext
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
@@ -43,9 +45,19 @@ def handle_app_error(error: AppError) -> Response:
 def handle_generic_error(error: Exception) -> Response:
     """Catches any unhandled exceptions and returns a generic error."""
     app.logger.error("An unhandled exception occurred", exc_info=error)
-    response = jsonify({"error": "An unexpected server error occurred."})
+    response = jsonify({"error": str(error)})
     response.status_code = HTTPStatus.INTERNAL_SERVER_ERROR
     return response
+
+@app.cli.command("reset-db")
+@click.confirmation_option(prompt="Are you sure you want to wipe the database? This will delete ALL permits, logs, and non-admin users.")
+def reset_db_command():
+    """Wipes all transactional data and non-admin users, resetting to a clean state."""
+    try:
+        logic.reset_database(AppError)
+        click.echo("✅ Database has been successfully reset.")
+    except AppError as e:
+        click.echo(f"❌ Error: {e}", err=True)
 
 
 def get_current_user(required: bool = True) -> logic.sqlite3.Row | None:
@@ -96,6 +108,7 @@ def config():
     return jsonify({
         "departments": logic.DEPARTMENTS,
         "divisions": logic.DIVISIONS,
+        "designations": logic.DESIGNATIONS,
         "vapidPublicKey": logic.VAPID_PUBLIC_KEY,
     })
 
@@ -135,6 +148,7 @@ def change_password():
 
 @app.route("/api/dashboard", methods=["GET"])
 def dashboard():
+    logic.auto_close_expired_permits()
     user = get_current_user()
     dashboard_data = logic.get_dashboard_data(user)
     return jsonify(dashboard_data)
@@ -142,8 +156,8 @@ def dashboard():
 
 @app.route("/api/users/pending", methods=["GET"])
 @admin_required
-def get_pending_users(admin):
-    users = logic.get_pending_users()
+def get_users_for_admin(admin):
+    users = logic.get_users_for_admin()
     return jsonify({"users": users})
 
 
@@ -165,8 +179,16 @@ def reject_user(admin, user_id: int):
     return jsonify({"message": "Access request rejected."})
 
 
+@app.route("/api/users/<int:user_id>", methods=["DELETE"])
+@admin_required
+def delete_user(admin, user_id: int):
+    logic.deactivate_user(admin, user_id, AppError)
+    return jsonify({"message": "User account deactivated."})
+
+
 @app.route("/api/permits", methods=["GET"])
 def get_permits():
+    logic.auto_close_expired_permits()
     user = get_current_user()
     permits = logic.get_permits(user)
     return jsonify({"permits": permits})
@@ -174,17 +196,55 @@ def get_permits():
 
 @app.route("/api/permits", methods=["POST"])
 def create_permit():
-    user = get_current_user()
-    permit_id, permit_no = logic.create_permit(user, request.get_json(), AppError)
-    return jsonify({"message": "Permit sent to the administrator for approval.", "permitId": permit_id, "permitNo": permit_no}), HTTPStatus.CREATED
+    try:
+        user = get_current_user()
+        permit_id, permit_no = logic.create_permit(user, request.get_json(), AppError)
+        with logic.db() as conn:
+            status = conn.execute("SELECT status FROM permits WHERE id = ?", (permit_id,)).fetchone()['status']
+        
+        if status == 'pending_approval':
+            message = f"{permit_no} submitted for final review."
+        else:
+            message = f"{permit_no} submitted for departmental approval."
+
+        return jsonify({"message": message, "permitId": permit_id, "permitNo": permit_no}), HTTPStatus.CREATED
+    except AppError as e:
+        raise e
+    except Exception as e:
+        app.logger.error(f"Unhandled exception in create_permit: {e}", exc_info=True)
+        return jsonify({"error": f"An unexpected server error occurred: {e}"}), HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 @app.route("/api/permits/<int:permit_id>", methods=["GET"])
 def get_permit_details(permit_id: int):
+    logic.auto_close_expired_permits()
     user = get_current_user()
-    permit, audit_log = logic.get_permit_details(user, permit_id, AppError)
-    return jsonify({"permit": permit, "audit": audit_log})
+    permit, audit_log, approvals = logic.get_permit_details(user, permit_id, AppError)
+    return jsonify({"permit": permit, "audit": audit_log, "approvals": approvals})
 
+@app.route("/api/permits/actionable", methods=["GET"])
+@admin_required
+def get_actionable_permits(admin):
+    logic.auto_close_expired_permits()
+    permits = logic.get_actionable_permits()
+    return jsonify({"permits": permits})
+
+
+@app.route("/api/permits/<int:permit_id>/department-approve", methods=["POST"])
+def department_approve_permit(permit_id: int):
+    try:
+        user = get_current_user()
+        json_data = request.get_json()
+        if not json_data:
+            raise AppError("Invalid request body. JSON expected.")
+        logic.department_approve_permit(user, permit_id, json_data, AppError)
+        return jsonify({"message": "Permit approval status updated."})
+    except AppError as e:
+        raise e
+    except Exception as e:
+        app.logger.error(f"Unhandled exception in department_approve_permit for permit {permit_id}: {e}", exc_info=True)
+        return jsonify({"error": f"An unexpected server error occurred: {e}"}), HTTPStatus.INTERNAL_SERVER_ERROR
+    
 
 @app.route("/api/permits/<int:permit_id>/issue", methods=["POST"])
 @admin_required

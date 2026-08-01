@@ -1,16 +1,19 @@
-const CACHE_NAME = 'slr-permit-pwa-v4';
+const CACHE_NAME = 'slr-permit-pwa-v2';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/styles.css',
   '/app.js',
   '/manifest.webmanifest',
-  '/assets/slr-app-icon.svg',
+  '/assets/slr-metaliks-logo.png',
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
-  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(APP_SHELL);
+    }).then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', event => {
@@ -19,8 +22,6 @@ self.addEventListener('activate', event => {
       const keys = await caches.keys();
       await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));
       await self.clients.claim();
-      const clients = await self.clients.matchAll({ type: 'window' });
-      clients.forEach(client => client.postMessage({ type: 'NEW_VERSION_AVAILABLE' }));
     })()
   );
 });
@@ -46,43 +47,6 @@ self.addEventListener('fetch', event => {
         });
         return cachedResponse || networkFetch;
       });
-    }),
-  );
-});
-
-self.addEventListener('push', event => {
-  const payload = event.data?.json() || { title: "SLR Permit", body: "You have a new notification." };
-  event.waitUntil(
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
-      icon: '/assets/slr-app-icon.svg',
-      tag: payload.tag || 'default-tag',
-      renotify: true,
-    })
-  );
-});
-
-self.addEventListener('notificationclick', event => {
-  const { notification } = event;
-  notification.close();
-
-  const permitIdMatch = notification.tag.match(/^permit-(\d+)$/);
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // Check if a window for this app is already open.
-      const appClient = windowClients.find(client => client.url.endsWith('/') || client.url.includes('/index.html'));
-
-      if (appClient) {
-        // If a window is open, focus it and send a message to navigate.
-        appClient.focus();
-        if (permitIdMatch) {
-          appClient.postMessage({ type: 'navigate-to-permit', permitId: permitIdMatch[1] });
-        }
-      } else if (clients.openWindow) {
-        // If no window is open, open a new one.
-        clients.openWindow('/');
-      }
     })
   );
 });

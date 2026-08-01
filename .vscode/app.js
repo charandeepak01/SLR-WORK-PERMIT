@@ -1,18 +1,18 @@
 const state = {
   token: sessionStorage.getItem("slr-permit-token") || "",
   user: null,
-  config: { departments: [], divisions: [], designations: [] },
+  config: { departments: [], divisions: [] },
   page: "dashboard",
   approvalsFilter: "all",
 };
 
 const ICONS = {
   eye: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`,
-  eyeOff: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`,
+  eyeOff: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`
 };
 
 const labels = {
-  authorityChecked: "Issuing authority checked all precautions regarding Electrical, Mechanical & Civil isolations",
+  authorityChecked: "Issuing authority checked all precautions",
   topFiringDone: "Top firing done",
   systemIsolated: "System isolated",
   steamNitrogenPurge: "Steam / nitrogen purging done",
@@ -23,12 +23,12 @@ const labels = {
   mechanicalPressureRelievedCooled: "Pressure released, flushed and cooled",
   mechanicalPlcDeselected: "PLC deselected",
   mechanicalHazardousMaterialDrained: "Hazardous material drained",
-  utilityServices: "Service identified (Steam / Air / Water / Gas / Other)",
+  utilityServices: "Service identified (steam / air / water)",
   utilityValvesTagged: "Utility valve closed and tagged",
   utilityDepressurised: "Utility line depressurised",
   electricalDrivePanel: "Drive / panel identified",
   electricalFuseRemoved: "Fuse removed",
-  electricalIsolatorLocked: "Isolator put off & Lock Out / Tag Out (LOTO)",
+  electricalIsolatorLocked: "Isolator put off and locked out",
   electricalTagOut: "Electrical tag-out applied",
   tagsBoards: "Safety tags / boards displayed",
   cordoned: "Area of work cordoned off",
@@ -216,14 +216,6 @@ function checkedSummary(data) {
   return entries.length ? `<div class="checked-list">${entries.map(([key]) => `<span>✓ ${escapeHtml(labels[key])}</span>`).join("")}</div>` : `<p class="small-text">No items recorded.</p>`;
 }
 
-function collectChecks(form) {
-  const output = {};
-  $$('[data-check]', form).forEach(element => { output[element.dataset.check] = element.checked; });
-  const coPpm = form.elements.coPpm?.value.trim();
-  if (coPpm) output.coPpm = Number(coPpm);
-  return output;
-}
-
 function statusBadge(status) { return `<span class="status ${escapeHtml(status)}">${escapeHtml(titleCase(status))}</span>`; }
 
 function userStatusBadge(status) {
@@ -259,14 +251,13 @@ function isAdmin() { return state.user?.role === "admin"; }
 async function renderDashboard() {
   const data = await api("/api/dashboard");
   const counts = data.counts || {};
-  const pendingCount = (counts.pending_department_approval || 0) + (counts.pending_approval || 0);
   $("#page-content").innerHTML = `
     <section class="card dashboard-actions">
       <div><h2>${isAdmin() ? "You control access and permit approval" : "Every safe job starts with a controlled permit"}</h2><p>${isAdmin() ? "Review pending access requests and permits before any work starts." : "Submit the work details and safety checks. The administrator must issue the permit before work begins."}</p></div>
       <button class="button primary" type="button" id="dashboard-new-permit">Create permit</button>
     </section>
     <section class="stats" aria-label="Permit status summary">
-      <div class="card stat"><strong>${pendingCount}</strong><span>Awaiting approval</span></div>
+      <div class="card stat"><strong>${counts.pending_approval || 0}</strong><span>Awaiting approval</span></div>
       <div class="card stat"><strong>${counts.issued || 0}</strong><span>Active permits</span></div>
       <div class="card stat"><strong>${counts.job_completed || 0}</strong><span>Ready to close</span></div>
       <div class="card stat"><strong>${counts.closed || 0}</strong><span>Closed permits</span></div>
@@ -283,55 +274,36 @@ function checklistGroup(title, description, keys) {
 }
 
 async function renderNewPermit() {
-  const now = new Date();
-  const validFromDefault = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-  now.setHours(now.getHours() + 8); // Default to 8 hours validity
-  const validUntilDefault = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-
-  const isCmdUser = state.user.division === 'CMD';
-  const otherDivisions = state.config.divisions.filter(d => d !== 'CMD');
-
-  const divisionHtml = isCmdUser
-    ? `<label>Target Work Division<select name="targetDivision" required>${optionHtml(otherDivisions, '', "Select target division")}</select></label>`
-    : `<label>Division (from your profile)<input type="text" value="${escapeHtml(state.user.division)}" readonly disabled /></label>`;
-
-  const isolationHtml = isCmdUser
-    ? `
-      <div class="check-grid three">
-        <label class="check-item"><input type="checkbox" name="requiredIsolations" value="Operation" checked /> <span>Operation Isolation (Target Division)</span></label>
-        <label class="check-item"><input type="checkbox" name="requiredIsolations" value="Mechanical" /> <span>Mechanical Isolation (CMD)</span></label>
-        <label class="check-item"><input type="checkbox" name="requiredIsolations" value="Electrical" /> <span>Electrical Isolation (CMD)</span></label>
-      </div>`
-    : `
-      <div class="check-grid four">
-        <label class="check-item"><input type="checkbox" name="requiredIsolations" value="Operation" /> <span>Operation isolation</span></label>
-        <label class="check-item"><input type="checkbox" name="requiredIsolations" value="Mechanical" /> <span>Mechanical isolation</span></label>
-        <label class="check-item"><input type="checkbox" name="requiredIsolations" value="Utility" /> <span>Utility isolation</span></label>
-        <label class="check-item"><input type="checkbox" name="requiredIsolations" value="Electrical/Instrumentation" /> <span>Electrical / Instrumentation isolation</span></label>
-      </div>`;
-
   $("#page-content").innerHTML = `
     <form id="permit-form" class="card form-card" novalidate>
       <div class="form-intro"><h2>New safe work permit</h2><p>Complete the activity-specific checks that are applicable. This request remains inactive until the administrator reviews and issues it.</p></div>
-      
       <section class="form-section">
         <h3>1. Work details</h3><p>These are the main details from the top of the paper permit.</p>
         <div class="form-grid three">
-          ${divisionHtml}
+          <label>Division (from your profile)<input type="text" value="${escapeHtml(state.user.division)}" readonly disabled /></label>
           <label class="full">Details of work to be carried out<textarea name="workDescription" required maxlength="2000" placeholder="Describe the work, method, and equipment involved."></textarea></label>
-          <label>Department<select name="department" required>${optionHtml(state.config.departments, state.user.department, "Select department")}</select></label>
+          <label>Department<select name="department" required>${optionHtml(state.config.departments, state.user.department, "Select department")}</select></label>          
           <label>Mobile number for contact<input name="contactNumber" type="tel" required pattern="\\d{10}" maxlength="10" placeholder="Enter 10-digit mobile number" title="Enter a 10-digit mobile number." value="${escapeHtml(state.user.mobileNumber || '')}" /></label>
           <label>Area / location<input name="area" required maxlength="200" placeholder="Example: MBF 1 - Cast house" /></label>
           <label>Equipment / asset<input name="equipment" maxlength="200" placeholder="Example: Main blower" /></label>
-          <label>Valid from<input name="validFrom" type="datetime-local" required value="${validFromDefault}" /></label>
-          <label>Valid until<input name="validUntil" type="datetime-local" required value="${validUntilDefault}" /></label>
+          <label>Valid from<input name="validFrom" type="datetime-local" required /></label>
+          <label>Valid until<input name="validUntil" type="datetime-local" required /></label>
         </div>
       </section>
-
-      <section class="form-section"><h3>2. Isolation required</h3><p>Select the departments that need to perform isolation for this job. This will determine the approval workflow.</p>${isolationHtml}</section>
-
       <section class="form-section">
-        <h3>3. General safety precautions</h3><p>Select the permit activity, then record the specific checks completed. If any high-risk activity is selected, Safety & Fire approval will be required.</p>
+        <h3>2. Isolation required</h3><p>Record the completed precautions. Add only controls that are actually applicable to this job.</p>
+        <div class="check-grid">${[
+          "authorityChecked", "topFiringDone", "systemIsolated", "steamNitrogenPurge", "coBelow50"
+        ].map(key => checkbox(key)).join("")}</div>
+        <div class="form-grid" style="margin-top: 14px"><label>CO reading (ppm)<input name="coPpm" type="number" min="0" max="10000" placeholder="Enter measured CO value" /></label></div>
+        <div class="check-grid" style="margin-top: 14px">
+          ${checklistGroup("Mechanical isolation", "Equipment/pipeline, valves, pressure and hazardous material", ["mechanicalEquipmentIsolation", "mechanicalValvesClosed", "mechanicalDepressurised", "mechanicalPressureRelievedCooled", "mechanicalPlcDeselected", "mechanicalHazardousMaterialDrained"])}
+          ${checklistGroup("Utility isolation", "Steam, air, water, gas or other service", ["utilityServices", "utilityValvesTagged", "utilityDepressurised"])}
+          ${checklistGroup("Electrical isolation", "Drive/panel isolation and lock-out / tag-out", ["electricalDrivePanel", "electricalFuseRemoved", "electricalIsolatorLocked", "electricalTagOut"])}
+        </div>
+      </section>
+      <section class="form-section">
+        <h3>3. General safety precautions</h3><p>Select the permit activity, then record the specific checks completed.</p>
         <div class="check-grid" style="margin-top:14px">${["tagsBoards", "cordoned", "ppe"].map(key => checkbox(key)).join("")}</div>
         <div class="check-grid" style="margin-top:14px">
           ${checklistGroup("Hot work", "Fire and combustible-material controls", ["hotEquipment", "hotAreaClear", "hotMasking", "hotOpenings", "hotExtinguisher", "hotPurging"])}
@@ -340,12 +312,19 @@ async function renderNewPermit() {
           ${checklistGroup("Excavation", "Excavation method and underground services", ["excavationManual", "cables", "pipes"])}
         </div>
       </section>
-
-      <p class="notice">By submitting, you confirm these details are accurate. The job must not begin until the permit is fully approved and issued.</p>
-      <div class="submit-row"><button class="button secondary" type="button" id="cancel-permit">Cancel</button><button class="button primary" type="submit">Send for approval</button></div>
+      <p class="notice">By submitting, you confirm these details are accurate. The job must not begin until the administrator has issued the permit.</p>
+      <div class="submit-row"><button class="button secondary" type="button" id="cancel-permit">Cancel</button><button class="button primary" type="submit">Send for administrator approval</button></div>
     </form>`;
   $("#cancel-permit").addEventListener("click", () => go("dashboard"));
   $("#permit-form").addEventListener("submit", submitPermit);
+}
+
+function collectChecks(form) {
+  const output = {};
+  $$('[data-check]', form).forEach(element => { output[element.dataset.check] = element.checked; });
+  const coPpm = form.elements.coPpm?.value.trim();
+  if (coPpm) output.coPpm = Number(coPpm);
+  return output;
 }
 
 async function submitPermit(event) {
@@ -356,40 +335,29 @@ async function submitPermit(event) {
   const validFrom = new Date(formData.get("validFrom"));
   const validUntil = new Date(formData.get("validUntil"));
   if (validUntil <= validFrom) return toast("Valid-until time must be later than the start time.", true);
-
-  const precautions = collectChecks(form);
-  const requiredIsolations = formData.getAll("requiredIsolations");
-
+  const checks = collectChecks(form);
+  const isolationKeys = [
+    "authorityChecked", "topFiringDone", "systemIsolated", "steamNitrogenPurge", "coBelow50", "coPpm",
+    "mechanicalEquipmentIsolation", "mechanicalValvesClosed", "mechanicalDepressurised", "mechanicalPressureRelievedCooled", "mechanicalPlcDeselected", "mechanicalHazardousMaterialDrained",
+    "utilityServices", "utilityValvesTagged", "utilityDepressurised",
+  ];
+  const electricalKeys = ["electricalDrivePanel", "electricalFuseRemoved", "electricalIsolatorLocked", "electricalTagOut"];
   const department = formData.get("department") || "";
-  let payload = {
-    workDescription: formData.get("workDescription"),
-    department,
-    area: formData.get("area"),
-    equipment: formData.get("equipment"),
-    contactNumber: String(formData.get("contactNumber") || "").trim(),
-    validFrom: validFrom.toISOString(),
-    validUntil: validUntil.toISOString(),
-    requiredIsolations: requiredIsolations,
-    precautions: precautions,
+  const payload = {
+    workDescription: formData.get("workDescription"), department, area: formData.get("area"), equipment: formData.get("equipment"), contactNumber: String(formData.get("contactNumber") || "").trim(),
+    validFrom: validFrom.toISOString(), validUntil: validUntil.toISOString(), jobTypes: formData.getAll("jobTypes"),
+    isolations: Object.fromEntries(Object.entries(checks).filter(([key]) => isolationKeys.includes(key))),
+    precautions: Object.fromEntries(Object.entries(checks).filter(([key]) => !isolationKeys.includes(key) && !electricalKeys.includes(key))),
+    electrical: Object.fromEntries(Object.entries(checks).filter(([key]) => electricalKeys.includes(key))),
   };
-
-  if (state.user.division === 'CMD') {
-    payload.targetDivision = formData.get("targetDivision");
-  }
-
   const submit = $("button[type=submit]", form);
   submit.disabled = true;
-  submit.textContent = "Submitting...";
   try {
     const result = await api("/api/permits", { method: "POST", body: JSON.stringify(payload) });
-    toast(result.message || `${result.permitNo} sent for approval.`);
-    form.reset();
+    toast(`${result.permitNo} sent for approval.`);
     go("permits");
-  } catch (error) { 
-    toast(error.message, true); 
-    submit.disabled = false;
-    submit.textContent = "Send for approval";
-  }
+  } catch (error) { toast(error.message, true); }
+  finally { submit.disabled = false; }
 }
 
 async function renderPermits() {
@@ -415,18 +383,17 @@ async function openPermit(permitId) {
       <article class="permit-detail"><header class="detail-head"><p class="eyebrow">DIGITAL SAFE WORK PERMIT</p><h2>${escapeHtml(p.permitNo)} ${statusBadge(p.status)}</h2><p class="detail-meta">Submitted by ${escapeHtml(p.requesterName)} on ${formatDate(p.requestedAt)}</p></header>
       <section class="detail-grid">${detailItem("Division", p.division)}${detailItem("Department", p.department)}${detailItem("Area / location", p.area)}${detailItem("Equipment", p.equipment)} ${detailItem("For any further information", `Call ${p.requesterName} at ${p.contactNumber || "—"}`)}</section>
       <section class="detail-section"><h3>Work to be carried out</h3><p>${escapeHtml(p.workDescription).replaceAll("\n", "<br>")}</p></section>
-      
-      <section class="detail-section"><h3>General safety precautions</h3>${checkedSummary(p.precautions)}</section>
-      
+      <section class="detail-section"><h3>Work activity</h3>${jobTypes.length ? `<div class="checked-list">${jobTypes.map(type => `<span>${escapeHtml(type)}</span>`).join("")}</div>` : `<p class="small-text">General work permit</p>`}</section>
+      <section class="detail-section"><h3>Isolation controls</h3>${checkedSummary(p.isolations)}${p.isolations?.coPpm !== undefined ? `<p class="small-text">Recorded CO reading: ${escapeHtml(p.isolations.coPpm)} ppm</p>` : ""}</section>
       <section class="detail-section"><h3>Departmental Approvals</h3>${renderApprovalsList(approvals)}</section>
-      
+      <section class="detail-section"><h3>General safety precautions</h3>${checkedSummary(p.precautions)}</section>
+      <section class="detail-section"><h3>Electrical isolation</h3>${checkedSummary(p.electrical)}</section>
       ${p.issuerNote ? `<section class="detail-section"><h3>Administrator note</h3><p>${escapeHtml(p.issuerNote)}</p></section>` : ""}
       ${p.status === "job_completed" || p.status === "closed" ? `<section class="detail-section"><h3>Normalisation after job completion</h3>${checkedSummary(p.normalisation)}</section>` : ""}
       <section class="detail-section"><h3>Audit trail</h3><ul class="audit-list">${data.audit.map(entry => `<li><strong>${escapeHtml(entry.action)}</strong><small>${escapeHtml(entry.actor)} · ${formatDate(entry.createdAt)}</small>${entry.detail?.note ? `<small>Note: ${escapeHtml(entry.detail.note)}</small>` : ""}</li>`).join("")}</ul></section>
       <div class="dialog-actions">
         <button class="button secondary" type="button" id="print-permit">Print / save as PDF</button>
-        ${isAdmin() && (p.status === 'pending_approval' || p.status === 'pending_department_approval') ? '<span class="status admin-view">Admin View Only</span>' : ''}
-        ${(state.user?.role === 'issuer' || state.user?.role === 'safety') && p.status === "pending_approval" ? `<button class="button primary" type="button" id="review-permit">Review permit</button>` : ""}
+        ${isAdmin() && p.status === "pending_approval" ? `<button class="button primary" type="button" id="review-permit">Review permit</button>` : ""}
         ${p.status === 'pending_department_approval' && canUserApprove(approvals) ? `<button class="button primary" type="button" id="dept-approve-permit">Review & Approve</button>` : ""}
         ${isAdmin() && p.status === "job_completed" ? `<button class="button primary" type="button" id="close-permit">Close permit</button>` : ""}
         ${!isAdmin() && p.status === "issued" && p.requesterId === state.user.id ? `<button class="button primary" type="button" id="finish-job">Record job completion</button>` : ""}
@@ -446,29 +413,10 @@ async function openPermit(permitId) {
   } catch (error) { toast(error.message, true); }
 }
 
-function renderApprovalDetails(approval) {
-  const details = approval.detail || {};
-  if (Object.keys(details).length === 0) return '';
-
-  const checkedItems = Object.entries(details)
-    .filter(([key, value]) => value === true && labels[key])
-    .map(([key]) => `<span>✓ ${escapeHtml(labels[key])}</span>`)
-    .join("");
-
-  const otherDetails = [];
-  if (details.coPpm != null) {
-    otherDetails.push(`<p class="small-text detail-item">Recorded CO reading: ${escapeHtml(details.coPpm)} ppm</p>`);
-  }
-  if (details.safetyNote) {
-    otherDetails.push(`<p class="small-text detail-item"><strong>Additional Precautions:</strong> ${escapeHtml(details.safetyNote)}</p>`);
-  }
-
-  return `<div class="approval-details">${checkedItems ? `<div class="checked-list">${checkedItems}</div>` : ''}${otherDetails.join('')}</div>`;
-}
-
 function renderApprovalsList(approvals) {
   if (!approvals.length) return `<p class="small-text">No departmental approvals are required for this permit type.</p>`;
 
+  const isMultiStage = approvals.some(a => a.stage > 1);
   const pendingApprovals = approvals.filter(a => a.status === 'pending');
   const currentStage = pendingApprovals.length > 0 ? Math.min(...pendingApprovals.map(a => a.stage)) : Infinity;
 
@@ -492,7 +440,7 @@ function renderApprovalsList(approvals) {
       case 'pending':
         if (appr.stage > currentStage) {
           statusClass = 'waiting';
-          statusContent = `<span class="small-text">Pending Stage ${appr.stage - 1} Approval</span>`;
+          statusContent = `<span class="small-text">Waiting for Stage ${currentStage} approval</span>`;
         } else {
           statusContent = `<span class="small-text">Awaiting approval</span>`;
         }
@@ -503,15 +451,14 @@ function renderApprovalsList(approvals) {
 
     return `
       <div class="approval-item status-${statusClass}">
-        <strong>Stage ${appr.stage}${appr.isFinal ? ' (Final)' : ''}: ${escapeHtml(appr.department)}</strong>
+        <strong>${escapeHtml(appr.department)} ${isMultiStage ? `<span class="stage-tag">Stage ${appr.stage}</span>` : ''}</strong>
         ${statusContent}
-        ${appr.status === 'approved' ? renderApprovalDetails(appr) : ''}
       </div>`;
   }).join("")}</div>`;
 }
 
 function canUserApprove(approvals) {
-  if (!state.user || state.user.role === "admin") return false;
+  if (!state.user) return false;
   const pendingApprovals = approvals.filter(a => a.status === 'pending');
   if (!pendingApprovals.length) return false;
 
@@ -523,34 +470,10 @@ function canUserApprove(approvals) {
 }
 
 function showDepartmentApprovalPanel(permitId) {
-  const dept = state.user.department;
-  let checklistHtml = '';
-
-  switch (dept) {
-    case 'Operation':
-      checklistHtml = `
-        <div class="check-grid">${["authorityChecked", "topFiringDone", "systemIsolated", "steamNitrogenPurge", "coBelow50"].map(key => checkbox(key)).join("")}</div>
-        <div class="form-grid" style="margin-top: 14px"><label>CO reading (ppm)<input name="coPpm" type="number" min="0" max="10000" placeholder="Enter measured CO value" /></label></div>`;
-      break;
-    case 'Mechanical':
-      checklistHtml = `<div class="check-grid">${["mechanicalEquipmentIsolation", "mechanicalValvesClosed", "mechanicalDepressurised", "mechanicalPressureRelievedCooled", "mechanicalPlcDeselected", "mechanicalHazardousMaterialDrained"].map(key => checkbox(key)).join("")}</div>`;
-      break;
-    case 'Utility':
-      checklistHtml = `<div class="check-grid">${["utilityServices", "utilityValvesTagged", "utilityDepressurised"].map(key => checkbox(key)).join("")}</div>`;
-      break;
-    case 'Electrical/Instrumentation':
-      checklistHtml = `<div class="check-grid">${["electricalDrivePanel", "electricalFuseRemoved", "electricalIsolatorLocked"].map(key => checkbox(key)).join("")}</div>`;
-      break;
-    case 'Safety & Fire':
-      checklistHtml = `<label>Additional precautions to be taken<textarea name="safetyNote" placeholder="Enter any additional precautions, or 'N/A' if none."></textarea></label>`;
-      break;
-  }
-
   $("#permit-action-panel").innerHTML = `
     <form class="completion-form" id="dept-approval-form">
       <h3>Department Approval</h3>
       <p class="small-text">As a representative of the ${escapeHtml(state.user.department)} department, you are signing off on this permit. Your details will be recorded.</p>
-      ${checklistHtml ? `<h4>Precautions (Optional)</h4>${checklistHtml}` : ''}
       <label>Your Name<input name="approverName" type="text" required value="${escapeHtml(state.user.fullName)}"></label>
       <label>Your Mobile Number<input name="approverMobile" type="tel" required pattern="\\d{10}" maxlength="10" value="${escapeHtml(state.user.mobileNumber)}"></label>
       <div class="dialog-actions">
@@ -566,19 +489,8 @@ function showDepartmentApprovalPanel(permitId) {
 
 async function submitDepartmentApproval(permitId, decision) {
   const form = $("#dept-approval-form");
-  if (decision === 'approved' && !form.reportValidity()) return;
-
-  const precautions = collectChecks(form);
-  const safetyNote = form.elements.safetyNote?.value.trim();
-  if (safetyNote) precautions.safetyNote = safetyNote;
-
-  const payload = {
-    decision,
-    approverName: form.elements.approverName.value,
-    approverMobile: form.elements.approverMobile.value,
-    precautions
-  };
-
+  if (!form.reportValidity()) return;
+  const payload = { decision, approverName: form.elements.approverName.value, approverMobile: form.elements.approverMobile.value };
   if (decision === 'rejected' && !window.confirm("Are you sure you want to reject this permit? This will stop the workflow.")) return;
 
   try {
@@ -653,12 +565,7 @@ async function renderApprovals() {
     return users.map(user => `<article class="card request-card" data-user-request="${user.id}">
         <div>
           <h3>${escapeHtml(user.fullName)} <span class="small-text">(${escapeHtml(user.employeeId)})</span></h3>
-          <div class="user-meta-container">
-            <span class="user-meta-badge badge-division">Division: ${escapeHtml(user.division || "—")}</span>
-            <span class="user-meta-badge badge-department">Department: ${escapeHtml(user.department || "—")}</span>
-            <span class="user-meta-badge badge-designation">Designation: ${escapeHtml(user.designation || "—")}</span>
-          </div>
-          <p class="small-text request-timestamp">Requested ${formatDate(user.createdAt)}</p>
+          <p>${escapeHtml(user.division || "—")} · ${escapeHtml(user.department)} · Requested ${formatDate(user.createdAt)}</p>
         </div>
         ${user.approvalStatus === 'pending' ? `
           <div class="request-actions"><select aria-label="Role for ${escapeHtml(user.fullName)}"><option value="requester">Requester</option><option value="issuer">Issuer</option><option value="safety">Safety</option><option value="admin">Administrator</option></select><button class="button danger small" data-reject-user="${user.id}" type="button">Reject</button><button class="button primary small" data-approve-user="${user.id}" type="button">Approve</button></div>
@@ -1025,22 +932,8 @@ async function bootstrap() {
     registerServiceWorker();
     listenForServiceWorkerUpdates();
     initGlobalAlerts();
-
-    const registerDivisionSelect = $("#register-division");
-    const registerDepartmentSelect = $("#register-department");
-    registerDivisionSelect.innerHTML = optionHtml(state.config.divisions, "", "Select division");
-    registerDepartmentSelect.innerHTML = optionHtml(state.config.departments, "", "Select department");
-
-    registerDivisionSelect.addEventListener('change', (event) => {
-      const selectedDivision = event.target.value;
-      if (selectedDivision === 'CMD') {
-        const cmdDepartments = ['Mechanical', 'Electrical/Instrumentation'];
-        registerDepartmentSelect.innerHTML = optionHtml(cmdDepartments, '', "Select department");
-      } else {
-        registerDepartmentSelect.innerHTML = optionHtml(state.config.departments, '', "Select department");
-      }
-    });
-    $("#register-designation").innerHTML = optionHtml(state.config.designations, "", "Select designation");
+    $("#register-division").innerHTML = optionHtml(state.config.divisions, "", "Select division");
+    $("#register-department").innerHTML = optionHtml(state.config.departments, "", "Select department");
 
     $$(".eye-button").forEach(btn => {
       btn.innerHTML = ICONS.eye;

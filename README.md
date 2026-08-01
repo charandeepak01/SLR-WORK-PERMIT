@@ -114,6 +114,31 @@ After deployment, you can log in with:
 
 For a production deployment on Vercel, you must migrate from SQLite to a managed database service like Vercel Postgres.
 
+## Database Management
+
+All application data is stored in the `data/work_permit.db` SQLite file.
+
+### Resetting the Database
+
+If you need to reset the application to a clean state for testing or to start fresh, a command-line script is provided. This action is **irreversible** and will:
+
+-   Delete all work permits and their approval history.
+-   Delete all audit logs.
+-   Delete all user accounts **except for the primary administrator (`ADMIN-001`)**.
+-   Reset the password for the `ADMIN-001` account to its initial default (`ChangeMe!2026` or the value of `INITIAL_ADMIN_PASSWORD`).
+
+To run the reset script:
+
+1.  Stop the server if it is running.
+2.  Open PowerShell or Command Prompt in the project directory.
+3.  Run the following command:
+
+    ```powershell
+    py -m flask --app app reset-db
+    ```
+
+4.  You will be prompted to confirm the action. Type `y` and press Enter to proceed.
+
 ## Data location and backup
 
 All app data is stored in `data/work_permit.db`. Back up this file while the server is stopped. Do not put it in public cloud sharing folders or send it through unencrypted email.
