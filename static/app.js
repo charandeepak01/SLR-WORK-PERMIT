@@ -4,6 +4,8 @@ const state = {
   config: { departments: [], divisions: [], designations: [] },
   page: "dashboard",
   approvalsFilter: "all",
+  permitsDivisionFilter: "all",
+  usersDivisionFilter: "all",
 };
 
 const ICONS = {
@@ -260,6 +262,24 @@ async function renderDashboard() {
   const data = await api("/api/dashboard");
   const counts = data.counts || {};
   const pendingCount = (counts.pending_department_approval || 0) + (counts.pending_approval || 0);
+
+  let recentPermitsHtml;
+  if (isAdmin() && data.recent.length > 0) {
+    const permitsByDivision = data.recent.reduce((acc, permit) => {
+        (acc[permit.division] = acc[permit.division] || []).push(permit);
+        return acc;
+    }, {});
+    const divisions = Object.keys(permitsByDivision).sort();
+
+    const divisionPermitsHtml = divisions.map(division => {
+        return `<div class="division-group"><h3>${escapeHtml(division)}</h3>${permitTable(permitsByDivision[division])}</div>`;
+    }).join('');
+
+    recentPermitsHtml = `<section><div class="section-title"><h2>Recent permits by Division</h2><button class="link-button" id="view-all-permits" type="button">View all →</button></div>${divisionPermitsHtml}</section>`;
+  } else {
+    recentPermitsHtml = `<section><div class="section-title"><h2>Recent permits</h2><button class="link-button" id="view-all-permits" type="button">View all →</button></div>${permitTable(data.recent)}</section>`;
+  }
+
   $("#page-content").innerHTML = `
     <section class="card dashboard-actions">
       <div><h2>${isAdmin() ? "You control access and permit approval" : "Every safe job starts with a controlled permit"}</h2><p>${isAdmin() ? "Review pending access requests and permits before any work starts." : "Submit the work details and safety checks. The administrator must issue the permit before work begins."}</p></div>
@@ -271,7 +291,7 @@ async function renderDashboard() {
       <div class="card stat"><strong>${counts.job_completed || 0}</strong><span>Ready to close</span></div>
       <div class="card stat"><strong>${counts.closed || 0}</strong><span>Closed permits</span></div>
     </section>
-    <section><div class="section-title"><h2>Recent permits</h2><button class="link-button" id="view-all-permits" type="button">View all →</button></div>${permitTable(data.recent)}</section>`;
+    ${recentPermitsHtml}`;
   $("#dashboard-new-permit").addEventListener("click", () => go("new-permit"));
   $("#view-all-permits").addEventListener("click", () => go("permits"));
   attachPermitRows();
@@ -394,9 +414,58 @@ async function submitPermit(event) {
 
 async function renderPermits() {
   const data = await api("/api/permits");
-  $("#page-content").innerHTML = `<section><div class="section-title"><div><h2>${isAdmin() ? "All permits" : "My submitted permits"}</h2><p class="small-text">Select a permit to view its safety checklist, workflow, and audit trail.</p></div><button id="permit-add" class="button primary" type="button">New permit</button></div>${permitTable(data.permits)}</section>`;
+  const allPermits = data.permits || [];
+
+  if (isAdmin()) {
+    const divisions = ['All', ...[...new Set(allPermits.map(p => p.division))].sort()];
+    
+    const divisionTabsHtml = `
+      <div class="filter-group" id="division-filter-group">
+        ${divisions.map(division => `
+          <button class="filter-button" data-division-filter="${escapeHtml(division)}">${escapeHtml(division)}</button>
+        `).join('')}
+      </div>`;
+
+    $("#page-content").innerHTML = `
+      <section>
+        <div class="section-title">
+          <div>
+            <h2>All permits</h2>
+            <p class="small-text">Select a division to filter the permits below, or create a new one.</p>
+          </div>
+          <button id="permit-add" class="button primary" type="button">New permit</button>
+        </div>
+        ${divisionTabsHtml}
+        <div id="permit-list-container"></div>
+      </section>`;
+
+    const permitListContainer = $("#permit-list-container");
+
+    function applyDivisionFilter(filter) {
+      state.permitsDivisionFilter = filter;
+      $$("#division-filter-group .filter-button").forEach(btn => btn.classList.toggle("active", btn.dataset.divisionFilter === filter));
+      
+      const filteredPermits = filter === 'All' 
+        ? allPermits 
+        : allPermits.filter(p => p.division === filter);
+        
+      permitListContainer.innerHTML = permitTable(filteredPermits);
+      attachPermitRows(permitListContainer);
+    }
+
+    $$("#division-filter-group .filter-button").forEach(button => {
+      button.addEventListener("click", () => applyDivisionFilter(button.dataset.divisionFilter));
+    });
+
+    if (!divisions.includes(state.permitsDivisionFilter)) {
+        state.permitsDivisionFilter = 'All';
+    }
+    applyDivisionFilter(state.permitsDivisionFilter);
+  } else {
+    $("#page-content").innerHTML = `<section><div class="section-title"><div><h2>Permits for ${escapeHtml(state.user.division)}</h2><p class="small-text">Select a permit to view its safety checklist, workflow, and audit trail.</p></div><button id="permit-add" class="button primary" type="button">New permit</button></div>${permitTable(allPermits)}</section>`;
+    attachPermitRows();
+  }
   $("#permit-add").addEventListener("click", () => go("new-permit"));
-  attachPermitRows();
 }
 
 function detailItem(label, value) { return `<div class="detail-box"><b>${escapeHtml(label)}</b><span>${escapeHtml(value || "—")}</span></div>`; }
@@ -646,10 +715,11 @@ async function deletePermit(permitId) {
 async function renderApprovals() {
   const [userData, actionablePermitsData] = await Promise.all([api("/api/users/pending"), api("/api/permits/actionable")]);
   const permitsForApproval = actionablePermitsData.permits;
-  const pendingUserCount = userData.users.filter(u => u.approvalStatus === "pending").length;
+  const allUsers = userData.users;
+  const pendingUserCount = allUsers.filter(u => u.approvalStatus === "pending").length;
 
   function renderUserList(users) {
-    if (!users.length) return `<p class="notice">${!userData.users.length ? 'No employees have registered yet.' : 'No employees match the current filter.'}</p>`;
+    if (!users.length) return `<p class="notice">${!allUsers.length ? 'No employees have registered yet.' : 'No employees match the current filters.'}</p>`;
     return users.map(user => `<article class="card request-card" data-user-request="${user.id}">
         <div>
           <h3>${escapeHtml(user.fullName)} <span class="small-text">(${escapeHtml(user.employeeId)})</span></h3>
@@ -678,6 +748,13 @@ async function renderApprovals() {
       </article>`).join("");
   }
 
+  const divisions = ['All', ...[...new Set(allUsers.map(u => u.division))].sort()];
+  const divisionTabsHtml = `
+    <div class="filter-group" id="user-division-filter-group">
+      ${divisions.map(division => `
+        <button class="filter-button" data-division-filter="${escapeHtml(division)}">${escapeHtml(division)}</button>
+      `).join('')}
+    </div>`;
   $("#page-content").innerHTML = `
     <section class="approval-block">
       <h2>Employee Accounts</h2>
@@ -689,6 +766,7 @@ async function renderApprovals() {
         <button class="filter-button" data-filter="rejected">Rejected</button>
         <button class="filter-button" data-filter="deactivated">Deactivated</button>
       </div>
+      ${divisionTabsHtml}
       <div id="user-list-container"></div>
     </section>
     <section class="approval-block"><h2>Permit decisions</h2><p>Every permit must be reviewed here before work begins. After job completion, review the normalisation items before closing.</p>
@@ -696,10 +774,18 @@ async function renderApprovals() {
     </section>`;
 
   const userListContainer = $("#user-list-container");
-  function applyFilter(filter) {
-    state.approvalsFilter = filter;
-    $$("#user-filter-group .filter-button").forEach(btn => btn.classList.toggle("active", btn.dataset.filter === filter));
-    const filteredUsers = filter === 'all' ? userData.users : userData.users.filter(u => u.approvalStatus === filter);
+  function applyFilters() {
+    $$("#user-filter-group .filter-button").forEach(btn => btn.classList.toggle("active", btn.dataset.filter === state.approvalsFilter));
+    $$("#user-division-filter-group .filter-button").forEach(btn => btn.classList.toggle("active", btn.dataset.divisionFilter === state.usersDivisionFilter));
+
+    let filteredUsers = allUsers;
+    if (state.approvalsFilter !== 'all') {
+      filteredUsers = filteredUsers.filter(u => u.approvalStatus === state.approvalsFilter);
+    }
+    if (state.usersDivisionFilter !== 'All') {
+      filteredUsers = filteredUsers.filter(u => u.division === state.usersDivisionFilter);
+    }
+
     userListContainer.innerHTML = renderUserList(filteredUsers);
     $$('[data-approve-user]', userListContainer).forEach(button => button.addEventListener("click", () => approveUser(button.dataset.approveUser)));
     $$('[data-reject-user]', userListContainer).forEach(button => button.addEventListener("click", () => rejectUser(button.dataset.rejectUser)));
@@ -729,8 +815,24 @@ async function renderApprovals() {
     });
   }
 
-  $$("#user-filter-group .filter-button").forEach(button => button.addEventListener("click", () => applyFilter(button.dataset.filter)));
-  applyFilter(state.approvalsFilter);
+  $$("#user-filter-group .filter-button").forEach(button => {
+    button.addEventListener("click", () => {
+      state.approvalsFilter = button.dataset.filter;
+      applyFilters();
+    });
+  });
+
+  $$("#user-division-filter-group .filter-button").forEach(button => {
+    button.addEventListener("click", () => {
+      state.usersDivisionFilter = button.dataset.divisionFilter;
+      applyFilters();
+    });
+  });
+
+  if (!divisions.includes(state.usersDivisionFilter)) {
+    state.usersDivisionFilter = 'All';
+  }
+  applyFilters();
 
   attachPermitRows();
   updatePendingBadge(pendingUserCount);
@@ -775,6 +877,10 @@ async function go(page) {
   // Reset user filter when navigating away from the approvals page
   if (state.page === "approvals" && page !== "approvals") {
     state.approvalsFilter = "all";
+    state.usersDivisionFilter = "all";
+  }
+  if (state.page === "permits" && page !== "permits" && isAdmin()) {
+    state.permitsDivisionFilter = "all";
   }
   state.page = page;
   $(".sidebar")?.classList.remove("open");
